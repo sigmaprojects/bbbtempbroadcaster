@@ -13,6 +13,8 @@ import java.util.Map;
 import bbbtempbroadcaster.ReadPropertiesFile;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
@@ -29,43 +31,57 @@ public class BBBTempBroadcaster {
     public static void main(String[] args) throws Exception {
 
         Map<String, String> props = ReadPropertiesFile.read();
+        I2CDevice device;
+        double cTemp;
+        double fTemp;
+        double humidity;
+        double test;
 
-        // Create I2C bus
-        I2CBus bus = I2CFactory.getInstance(I2CBus.BUS_1);
-        // Get I2C device, SI7021 I2C address is 0x40(64)
-        I2CDevice device = bus.getDevice(0x40);
+        try {
+            test = 0.00;
+            // Create I2C bus
+            I2CBus bus = I2CFactory.getInstance(I2CBus.BUS_2);
+            // Get I2C device, SI7021 I2C address is 0x40(64)
+            device = bus.getDevice(0x40);
 
-        // Send humidity measurement command
-        device.write((byte) 0xF5);
-        Thread.sleep(300);
+            // Send humidity measurement command
+            device.write((byte) 0xF5);
 
-        // Read 2 bytes of humidity data, msb first
-        byte[] data = new byte[2];
-        device.read(data, 0, 2);
+            Thread.sleep(300);
 
-        // Convert humidity data
-        double humidity = (((((data[0] & 0xFF) * 256) + (data[1] & 0xFF)) * 125.0) / 65536.0) - 6;
+            // Read 2 bytes of humidity data, msb first
+            byte[] data = new byte[2];
+            device.read(data, 0, 2);
 
-        // Send temperature measurement command
-        device.write((byte) 0xF3);
-        Thread.sleep(300);
+            // Convert humidity data
+            humidity = (((((data[0] & 0xFF) * 256) + (data[1] & 0xFF)) * 125.0) / 65536.0) - 6;
 
-        // Read 2 bytes of temperature data, msb first
-        device.read(data, 0, 2);
+            // Send temperature measurement command
+            device.write((byte) 0xF3);
+            Thread.sleep(300);
 
-        // Convert temperature data
-        double cTemp = (((((data[0] & 0xFF) * 256) + (data[1] & 0xFF)) * 175.72) / 65536.0) - 46.85;
-        double fTemp = (cTemp * 1.8) + 32;
+            // Read 2 bytes of temperature data, msb first
+            device.read(data, 0, 2);
 
-        // Output data to screen
-        System.out.printf("Relative Humidity : %.2f %% %n", humidity);
-        System.out.printf("Temperature in Celsius : %.2f C%n", cTemp);
-        System.out.printf("Temperature in Fahrenheit : %.2f F%n", fTemp);
-        sendData(
-                props.get("url"),
-                cTemp,
-                humidity
-        );
+            // Convert temperature data
+            cTemp = (((((data[0] & 0xFF) * 256) + (data[1] & 0xFF)) * 175.72) / 65536.0) - 46.85;
+            fTemp = (cTemp * 1.8) + 32;
+
+            // Output data to screen
+            System.out.printf("Relative Humidity : %.2f %% %n", humidity);
+            System.out.printf("Temperature in Celsius : %.2f C%n", cTemp);
+            System.out.printf("Temperature in Fahrenheit : %.2f F%n", fTemp);
+
+            sendData(
+                    props.get("url"),
+                    cTemp,
+                    humidity
+            );
+
+        } catch (UnsatisfiedLinkError e) {
+            System.err.println("Platform does not support this driver %n");
+        }
+
     }
 
     private static void sendData(
@@ -73,9 +89,9 @@ public class BBBTempBroadcaster {
             double cTemp,
             double humidity
     ) {
-        String fullStringURL = sURL + "&temp=" + String.valueOf(cTemp) + "&humidity=" + String.valueOf(humidity);
+        String fullStringURL = sURL + "&temp=" + String.valueOf(round(cTemp,2)) + "&humidity=" + String.valueOf(round(humidity,2));
         StringBuilder result = new StringBuilder();
-        System.out.printf("Sending data using URL: " + fullStringURL);
+        System.out.printf("Sending data using URL: " + fullStringURL + " %n");
         try {
             URL url = new URL(fullStringURL);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -87,10 +103,20 @@ public class BBBTempBroadcaster {
             }
             rd.close();
         } catch (Exception e) {
-            System.out.printf("Error sending data to collector.");
+            System.out.printf("Error sending data to collector. %n");
             e.printStackTrace();
         }
         //return result.toString();
+    }
+
+    public static double round(double value, int places) {
+        if (places < 0) {
+            throw new IllegalArgumentException();
+        }
+
+        BigDecimal bd = new BigDecimal(value);
+        bd = bd.setScale(places, RoundingMode.HALF_UP);
+        return bd.doubleValue();
     }
 
 }

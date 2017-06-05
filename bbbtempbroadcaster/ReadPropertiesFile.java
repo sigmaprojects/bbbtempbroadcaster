@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +30,14 @@ public class ReadPropertiesFile {
         
         try {
             System.out.println("Attempting to read config.properties");
-            File file = new File("config.properties");
+            
+            // get the local working directory, so we can run this from cron and not
+            // have to worry about current working directories and such
+            String path = ReadPropertiesFile.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+            String decodedPath = URLDecoder.decode(path, "UTF-8");
+            decodedPath = decodedPath.replace("BBBTempBroadcaster.jar","");
+            
+            File file = new File(decodedPath + "config.properties");
             Properties properties;
             try (FileInputStream fileInput = new FileInputStream(file)) {
                 properties = new Properties();
